@@ -1,0 +1,55 @@
+name: 构建 SaveHollywood(Universal)
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 编译(arm64 + x86_64 通用二进制)
+        run: |
+          xcodebuild -project SaveHollywood.xcodeproj \
+            -target SaveHollywood \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            MACOSX_DEPLOYMENT_TARGET=11.0 \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            CONFIGURATION_BUILD_DIR="$PWD/build" \
+            build
+
+      - name: 定位产物并临时签名
+        run: |
+          set -e
+          Saver=$(find build -name "*.saver" -type d | head -1)
+          echo "产物: $Saver"
+          codesign -f -s - "$Saver"
+          mv "$Saver" ./SaveHollywood.saver
+          file SaveHollywood.saver/Contents/MacOS/*
+
+      - name: 加载冒烟测试
+        run: swift scripts/test-load.swift "$PWD/SaveHollywood.saver"
+
+      - name: 打包并发布 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          zip -qry SaveHollywood-universal.saver.zip SaveHollywood.saver
+          gh release delete latest --cleanup-tag -y || true
+          gh release create latest SaveHollywood-universal.saver.zip \
+            --title "SaveHollywood(Universal 自动构建)" \
+            --notes "每次推送自动构建,含 arm64(Apple Silicon)与 x86_64 双架构。
+          下载解压后把 SaveHollywood.saver 拷到 /Library/Screen Savers 或 ~/Library/Screen Savers。
+          免签名构建:经浏览器下载会带隔离标记,安装前先执行
+          xattr -dr com.apple.quarantine SaveHollywood.saver
+          对应提交:${{ github.sha }}"
