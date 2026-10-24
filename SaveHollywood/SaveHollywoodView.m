@@ -183,6 +183,69 @@ NSUInteger random_no(NSUInteger n)
 
 #endif
 
+#pragma mark - Layout (macOS 11+ fix: keep layers in sync when the view is resized)
+
+- (void)setFrameSize:(NSSize)newSize
+{
+    [super setFrameSize:newSize];
+
+    [self sh_layoutVideoLayers];
+}
+
+- (void)viewDidMoveToWindow
+{
+    [super viewDidMoveToWindow];
+
+    [self sh_layoutVideoLayers];
+}
+
+- (void)sh_layoutVideoLayers
+{
+    if (_backgroundLayer==nil)
+    {
+        return;
+    }
+
+    _backgroundLayer.frame=self.bounds;
+
+    if (_AVPlayerLayer==nil)
+    {
+        return;
+    }
+
+    CGRect tBackgroundFrame=_backgroundLayer.bounds;
+    CGRect tFrame=tBackgroundFrame;
+
+    if (_drawBorder==YES)
+    {
+        tFrame=CGRectInset(tFrame,BORDER_SIZE,BORDER_SIZE);
+    }
+
+    if (_scaling==SHMovieScaleNone)
+    {
+        // Keep the movie at its natural size, shrinking it only if it no longer fits
+        CGSize tAssetSize=_AVPlayerLayer.player.currentItem.presentationSize;
+
+        if (tAssetSize.width>0. && tAssetSize.height>0.)
+        {
+            CGFloat tRatio=MIN(tFrame.size.width/tAssetSize.width,tFrame.size.height/tAssetSize.height);
+
+            if (tRatio<1.)
+            {
+                tAssetSize.width=round(tAssetSize.width*tRatio);
+                tAssetSize.height=round(tAssetSize.height*tRatio);
+            }
+
+            tFrame.size=tAssetSize;
+        }
+    }
+
+    tFrame.origin.x=round((CGRectGetWidth(tBackgroundFrame)-CGRectGetWidth(tFrame))*0.5);
+    tFrame.origin.y=round((CGRectGetHeight(tBackgroundFrame)-CGRectGetHeight(tFrame))*0.5);
+
+    _AVPlayerLayer.frame=tFrame;
+}
+
 #pragma mark -
 
 - (void)keyDown:(NSEvent *) inEvent
